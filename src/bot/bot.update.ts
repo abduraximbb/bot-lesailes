@@ -122,6 +122,15 @@ export class BotUpdate {
     await this.botService.onAddToCart(ctx);
   }
 
+  @Hears([
+    '✅ Iloji boricha tezroq',
+    '✅ Как можно скорее',
+    '✅ As soon as possible',
+  ])
+  async onFaster(@Ctx() ctx: Context) {
+    await this.botService.onFaster(ctx);
+  }
+
   @Hears(new RegExp('^\\p{Extended_Pictographic}\\s?.+', 'u')) // Emoji + matn formatiga mos regex
   async onCategorySelected(ctx: Context) {
     if ('text' in ctx.message && typeof ctx.message.text === 'string') {
@@ -169,7 +178,21 @@ export class BotUpdate {
 
   @Action(/^increase_\d+$/)
   async onIncreaseProduct(@Ctx() ctx: Context) {
-    await this.botService.onIncreaseProduct(ctx);
+    await this.botService.onIncDecProduct(ctx);
+  }
+
+  @Action(/^decrease_\d+$/)
+  async onDecreaseProduct(@Ctx() ctx: Context) {
+    await this.botService.onIncDecProduct(ctx);
+  }
+
+  @Hears([
+    "Savatni to'ldirdim✅",
+    'Я заполнил корзину✅',
+    'I have completed the cart✅',
+  ])
+  async onCompleteCart(@Ctx() ctx: Context) {
+    await this.botService.onCompleteCart(ctx);
   }
 
   // @On('photo')

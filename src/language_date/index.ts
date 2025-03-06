@@ -246,3 +246,27 @@ export const EMPTY_CART = {
   ru: 'Ваша корзина пуста 😔',
   en: 'Your cart is empty 😔',
 };
+
+export const LATER = {
+  uz: '🕒 Keyinroq',
+  ru: '🕒 Позже',
+  en: '🕒 Later',
+};
+
+export const FASTER = {
+  uz: '✅ Iloji boricha tezroq',
+  ru: '✅ Как можно скорее',
+  en: '✅ As soon as possible',
+};
+
+export const TIME_SELECTION = {
+  uz: "Buyurtmani qabul qilish uchun o'zingizga qulay vaqtni tanlang:",
+  ru: 'Выберите удобное время для принятия заказа:',
+  en: 'Select a convenient time to accept the order:',
+};
+
+export const ORDER_DELIVER = {
+  uz: 'Buyurtmangiz tez orada yetkazib beriladi',
+  ru: 'Ваш заказ будет доставлен в ближайшее время',
+  en: 'Your order will be delivered soon',
+};

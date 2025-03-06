@@ -28,14 +28,18 @@ import {
   DELIVERY_TEXT,
   DETERMINE_AMOUNT,
   EMPTY_CART,
+  FASTER,
   FOR_ADD_INFO,
   FOR_HOUSE_NUM,
+  LATER,
   MAIN_MENU,
   NO_ORDERS,
   NO_PROMOTIONS,
+  ORDER_DELIVER,
   regions,
   SKIP,
   START_ORDER,
+  TIME_SELECTION,
   TOTAL,
   TYPE_SERVICE,
 } from 'src/language_date';
@@ -741,11 +745,45 @@ export class BotService {
     }
   }
 
-  async onRemoveProduct(ctx: Context) {}
-
-  async onIncreaseProduct(ctx: Context) {
+  async onRemoveProduct(ctx: Context) {
     const userId = ctx.from.id;
-    const user = await this.userModel.findByPk(userId);
+    const productId = ctx.callbackQuery['data'].split('_')[1];
+
+    const cart = await this.cartModel.findOne({ where: { user_id: userId } });
+
+    if (cart) {
+      // Mahsulotlarni to‘g‘ri formatga o‘tkazamiz
+      let products = cart.dataValues.products.map(
+        (item: (string | number)[]) => ({
+          id: String(item[0]), // Birinchi element - id
+          price: Number(item[1]),
+          quantity: Number(item[2]),
+        }),
+      );
+
+      products = products.filter((item) => item.id !== productId);
+
+      const updatedProducts = products.map((item) => [
+        item.id,
+        item.price,
+        item.quantity,
+      ]);
+
+      // Yangilangan mahsulotlar ro‘yxatini bazaga saqlaymiz
+      await this.cartModel.update(
+        { products: updatedProducts }, // Bazaga qayta massiv sifatida yuboramiz
+        { where: { user_id: userId } },
+      );
+      if (!products || !products?.length) {
+        ctx.deleteMessage();
+      }
+
+      await this.onCart(ctx);
+    }
+  }
+
+  async onIncDecProduct(ctx: Context) {
+    const userId = ctx.from.id;
 
     const action = ctx.callbackQuery['data'].split('_')[0];
     const productId = ctx.callbackQuery['data'].split('_')[1];
@@ -788,7 +826,101 @@ export class BotService {
       } else {
         await ctx.answerCbQuery('Savat topilmadi ❌');
       }
+    } else {
+      const cart = await this.cartModel.findOne({
+        where: { user_id: userId },
+      });
+
+      if (cart) {
+        // Mahsulotlarni to‘g‘ri formatga o‘tkazamiz
+        let products = cart.dataValues.products.map(
+          (item: (string | number)[]) => ({
+            id: String(item[0]), // Birinchi element - id
+            price: Number(item[1]),
+            quantity: Number(item[2]),
+          }),
+        );
+
+        // Tegishli mahsulotni topib, sonini oshiramiz
+        products = products.map((item) => {
+          if (item.id === productId && item.quantity > 1) {
+            return { ...item, quantity: item.quantity - 1 };
+          }
+          return item;
+        });
+
+        // Obyektni bazaga mos formatga qaytarib o‘zgartiramiz
+        const updatedProducts = products.map((item) => [
+          item.id,
+          item.price,
+          item.quantity,
+        ]);
+
+        // Yangilangan mahsulotlar ro‘yxatini bazaga saqlaymiz
+        await this.cartModel.update(
+          { products: updatedProducts }, // Bazaga qayta massiv sifatida yuboramiz
+          { where: { user_id: userId } },
+        );
+
+        await this.onCart(ctx);
+      } else {
+        await ctx.answerCbQuery('Savat topilmadi ❌');
+      }
     }
+  }
+
+  async onCompleteCart(ctx: Context) {
+    const userId = ctx.from.id;
+    const user = await this.userModel.findByPk(userId);
+    const language = user.lang;
+
+    const cart = await this.cartModel.findOne({ where: { user_id: userId } });
+    if (!cart || !cart.dataValues.products?.length) {
+      return ctx.reply(EMPTY_CART[language]);
+    }
+
+    const cartData = cart.dataValues.products; // [ [ '1', 25000, 2 ], [ '2', 27000, 3 ] ]
+    let order_number = 1;
+    let totalSum = 0;
+    let cartText = `${CART[language]}\n\n`;
+
+    for (const item of cartData) {
+      const [productId, price, quantity] = item;
+
+      const product = await this.productsModel.findByPk(productId);
+      if (!product) continue;
+
+      const productName = product.dataValues.name_uz;
+      const totalPrice = Number(price) * Number(quantity);
+
+      totalSum += totalPrice;
+
+      cartText += `*${order_number}. ${productName}*\n`;
+      cartText += `${quantity} × ${price} = ${totalPrice} ${CASH[language]}\n\n`;
+
+      order_number += 1;
+    }
+
+    cartText += `${TOTAL[language]}: ${totalSum} ${CASH[language]}`;
+
+    await ctx.reply(cartText, { parse_mode: 'Markdown' });
+    await ctx.reply(TIME_SELECTION[language], {
+      parse_mode: 'HTML',
+      reply_markup: {
+        keyboard: [
+          [LATER[language], FASTER[language]],
+          [BACK_BUTTON[language]],
+        ],
+        resize_keyboard: true, // Klaviaturani ekran o'lchamiga moslashtirish
+        one_time_keyboard: true,
+      },
+    });
+  }
+
+  async onFaster(ctx:Context){
+    const userId = ctx.from.id
+    const user =await this.userModel.findByPk(userId)
+    ctx.reply(ORDER_DELIVER[user.lang])
   }
 
   async onBack(ctx: Context) {
