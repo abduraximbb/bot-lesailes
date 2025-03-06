@@ -5,7 +5,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { Context, Markup } from 'telegraf';
 import { User } from './models/user.model';
 import { Message } from 'telegraf/typings/core/types/typegram';
-import { Telegraf, session } from 'telegraf';
+import { Telegraf } from 'telegraf';
 import axios from 'axios';
 
 import {
@@ -48,13 +48,10 @@ import { Addressess } from './models/addressess.model';
 import { Orders } from './models/orders.model';
 import { Categories } from './models/category.model';
 import { Products } from './models/product.model';
-import { cp } from 'fs';
 import { AddProducts } from './models/add-products.model';
 
 @Injectable()
 export class BotService {
-  private bot: Telegraf<Context>;
-
   constructor(
     @InjectModel(User) private readonly userModel: typeof User,
     @InjectModel(Cart) private readonly cartModel: typeof Cart,
@@ -166,9 +163,7 @@ export class BotService {
         [MAIN_MENU[userLang][2][0], MAIN_MENU[userLang][3][0]], // Uchinchi qator - 2 ta tugma
         [MAIN_MENU[userLang][4][0], MAIN_MENU[userLang][5][0]],
       ], // To'rtinchi qator - bitta tugma
-    )
-      .oneTime()
-      .resize();
+    ).resize();
 
     // Foydalanuvchiga menyuni yuborish
     await ctx.reply(menuTitle, {
@@ -183,6 +178,17 @@ export class BotService {
     const user = await this.userModel.findByPk(userId);
 
     if (user) {
+      if (user.last_step === 'add_info') {
+        const lastAddress = await this.addressModel.findOne({
+          where: { user_id: userId }, // Foydalanuvchiga tegishli ma'lumotlarni qidirish
+          order: [['id', 'DESC']], // Eng oxirgi qo‘shilganini olish
+        });
+
+        if (lastAddress) {
+          await this.addressModel.destroy({ where: { id: lastAddress.id } }); // Eng oxirgi manzilni o‘chirish
+        }
+      }
+
       await user.update({ last_step: 'order' });
       await this.cartModel.destroy({ where: { user_id: userId } });
       await ctx.reply(CHOOSE_TYPE_SERVICE[user.lang], {
@@ -190,9 +196,7 @@ export class BotService {
         ...Markup.keyboard([
           TYPE_SERVICE[user.lang], // Xizmat turlari
           [BACK_BUTTON[user.lang]], // Ortga qaytish tugmasi alohida qator
-        ])
-          .oneTime()
-          .resize(),
+        ]).resize(),
       });
     }
   }
@@ -214,9 +218,7 @@ export class BotService {
       ...Markup.keyboard([
         [Markup.button.locationRequest(DELIVERY[userLang][0])], // 📍 Eng yaqin filialni aniqlash - YUQORIDA
         [BACK_BUTTON[userLang], DELIVERY[userLang][1]], // ⬅️ Ortga va 🗺 Mening manzillarim - QUYIDA YONMA-YON
-      ])
-        .oneTime()
-        .resize(),
+      ]).resize(),
     });
   }
 
@@ -227,8 +229,6 @@ export class BotService {
       const user = await this.userModel.findByPk(userId);
 
       if (user) {
-        await user.update({ last_step: 'location' });
-
         try {
           // Reverse geocoding orqali manzilni olish
           const response = await axios.get(
@@ -252,11 +252,23 @@ export class BotService {
           const road = addressData.neighbourhood || addressData.locality;
           const houseNumber = addressData.house_number || '';
 
-          await this.addressModel.create({
-            user_id: userId,
-            city,
-            location: `${longitude},${latitude}`,
-          });
+          if (user.last_step === 'takeaway' || user.last_step === 'delivery') {
+            await this.addressModel.create({
+              user_id: userId,
+              city,
+              location: `${longitude},${latitude}`,
+            });
+
+            await user.update({ last_step: 'location' });
+          } else {
+            await this.addressModel.update(
+              {
+                city,
+                location: `${longitude},${latitude}`,
+              },
+              { where: { user_id: userId } },
+            );
+          }
 
           // Natijani jamlash
           const shortAddress =
@@ -278,9 +290,7 @@ export class BotService {
                     ADDRESS_CONFIRM_BUTTONS[user.lang][1],
                   ),
                 ],
-              ])
-                .oneTime()
-                .resize(),
+              ]).resize(),
             },
           );
         } catch (error) {
@@ -364,7 +374,7 @@ export class BotService {
               ...chunkArray(categoryNames, 2), // Kategoriyalarni 2 tadan joylash
             ]).resize(), // Klaviaturani ekranga moslash uchun
           });
-        } else if (user.last_step.split('_')[0] == 'category') {
+        } else if (user.last_step.split('_')[0] === 'category') {
           await user.update({
             last_step: `product_${user.last_step.split('_')[1]}`,
           });
@@ -373,6 +383,7 @@ export class BotService {
             const product = await this.productsModel.findOne({
               where: { [`name_${user.lang}`]: ctx.message.text },
             });
+            console.log(product);
 
             if (!product) {
               return ctx.reply('Mahsulot topilmadi.');
@@ -917,10 +928,10 @@ export class BotService {
     });
   }
 
-  async onFaster(ctx:Context){
-    const userId = ctx.from.id
-    const user =await this.userModel.findByPk(userId)
-    ctx.reply(ORDER_DELIVER[user.lang])
+  async onFaster(ctx: Context) {
+    const userId = ctx.from.id;
+    const user = await this.userModel.findByPk(userId);
+    ctx.reply(ORDER_DELIVER[user.lang]);
   }
 
   async onBack(ctx: Context) {
@@ -942,6 +953,18 @@ export class BotService {
           await this.onCategorySelected(ctx);
           break;
 
+        case 'location':
+          await this.onOrder(ctx);
+          break;
+
+        case 'add':
+          await this.onOrder(ctx);
+          break;
+
+        // case 'category':
+        //   await this.onText(ctx);
+        //   break;
+
         default:
           await this.onRegionSelect(ctx, '');
           await user.update({ last_step: 'finish' });
@@ -949,5 +972,3 @@ export class BotService {
     }
   }
 }
-
-//ctx.sendPhoto(ctx.message.photo[3].file_id);
