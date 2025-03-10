@@ -1,4 +1,5 @@
-import { Column, DataType, Model, Table } from 'sequelize-typescript';
+import { Column, DataType, ForeignKey, Model, Table } from 'sequelize-typescript';
+import { OurAddressess } from './our-addressess.model';
 
 interface ICartCreationAttr {
   service_type: 'delivery' | 'takeaway'; // ENUM sifatida aniqlash
@@ -30,4 +31,11 @@ export class Cart extends Model<Cart, ICartCreationAttr> {
     type: DataType.JSONB,
   })
   products: (number | string)[][];
+
+  @ForeignKey(()=>OurAddressess)
+  @Column({
+    type:DataType.BIGINT
+  })
+  addressId:number
+  address:OurAddressess
 }

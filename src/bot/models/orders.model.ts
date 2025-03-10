@@ -1,9 +1,19 @@
-import { Column, DataType, Model, Table } from 'sequelize-typescript';
+import {
+  BelongsTo,
+  Column,
+  DataType,
+  ForeignKey,
+  Model,
+  Table,
+} from 'sequelize-typescript';
+import { OurAddressess } from './our-addressess.model';
 
 interface IOrderCreationAttr {
   user_id: number;
   products: any[][];
   total_price: number;
+  addressId: number;
+  service_type: 'delivery' | 'takeaway'; // ENUM sifatida aniqlash
 }
 
 @Table({ tableName: 'orders' })
@@ -30,4 +40,17 @@ export class Orders extends Model<Orders, IOrderCreationAttr> {
     allowNull: false,
   })
   products: any[][];
+
+  @ForeignKey(() => OurAddressess)
+  @Column({
+    type: DataType.INTEGER,
+  })
+  addressId: number;
+  @BelongsTo(() => OurAddressess)
+  address: OurAddressess;
+
+  @Column({
+    type: DataType.ENUM('delivery', 'takeaway'), // ENUM sifatida belgilash
+  })
+  service_type: 'delivery' | 'takeaway';
 }

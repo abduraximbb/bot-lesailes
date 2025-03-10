@@ -270,3 +270,9 @@ export const ORDER_DELIVER = {
   ru: 'Ваш заказ будет доставлен в ближайшее время',
   en: 'Your order will be delivered soon',
 };
+
+export const CLOSE_ALL_ADDRESSES = {
+  uz: "Hozir hamma filiallar yopiq, keyinroq urinib ko'ring",
+  ru: 'Сейчас все филиалы закрыты, попробуйте позже',
+  en: 'All branches are currently closed, please try again later',
+};

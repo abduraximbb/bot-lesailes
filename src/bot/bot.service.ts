@@ -22,6 +22,7 @@ import {
   choose_region,
   CHOOSE_TYPE_SERVICE,
   CLEAR,
+  CLOSE_ALL_ADDRESSES,
   COMPLETED_CART,
   CONTINUE,
   DELIVERY,
@@ -49,6 +50,7 @@ import { Orders } from './models/orders.model';
 import { Categories } from './models/category.model';
 import { Products } from './models/product.model';
 import { AddProducts } from './models/add-products.model';
+import { OurAddressess } from './models/our-addressess.model';
 
 @Injectable()
 export class BotService {
@@ -62,6 +64,8 @@ export class BotService {
     @InjectModel(Products) private readonly productsModel: typeof Products,
     @InjectModel(AddProducts)
     private readonly addProductsModel: typeof AddProducts,
+    @InjectModel(OurAddressess)
+    private readonly ourAddressesModel: typeof OurAddressess,
   ) {}
 
   async onStart(ctx: Context) {
@@ -306,9 +310,109 @@ export class BotService {
   async onConfirm(ctx: Context) {
     const userId = ctx.from.id;
     const user = await this.userModel.findByPk(userId);
-    if (user) {
+    if (!user) return;
+
+    const addresses = await this.ourAddressesModel.findAll();
+    const userAddress = await this.addressModel.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!userAddress) {
+      return ctx.reply('Foydalanuvchi manzili topilmadi.');
+    }
+
+    const haversineDistance = (coord1, coord2) => {
+      const toRad = (angle) => (Math.PI / 180) * angle;
+
+      const [lon1, lat1] = coord1.map(parseFloat);
+      const [lon2, lat2] = coord2.map(parseFloat);
+
+      const R = 6371; // Yer radiusi (km)
+
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) *
+          Math.cos(toRad(lat2)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      return R * c; // Masofa (km)
+    };
+
+    const isWithinWorkTime = (workTime) => {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const [start, end] = workTime.split('-').map((t) => {
+        const [hour, minute] = t.split(':').map(Number);
+        return { hour, minute };
+      });
+
+      const nowMinutes = currentHour * 60 + currentMinute;
+      const startMinutes = start.hour * 60 + start.minute;
+      const endMinutes = end.hour * 60 + end.minute;
+
+      return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+    };
+
+    const findNearestOpenAddress = (userAddress, addresses) => {
+      const userCoords = userAddress.location.split(',').map(parseFloat);
+
+      const sortedAddresses = addresses
+        .map((address) => ({
+          address,
+          distance: haversineDistance(
+            userCoords,
+            address.dataValues.location.split(',').map(parseFloat),
+          ),
+        }))
+        .sort((a, b) => a.distance - b.distance); // Masofaga qarab tartiblash
+
+      for (const { address, distance } of sortedAddresses) {
+        if (isWithinWorkTime(address.dataValues.work_time)) {
+          return { nearestAddress: address, minDistance: distance };
+        }
+      }
+
+      return { nearestAddress: null, minDistance: null };
+    };
+
+    const { nearestAddress, minDistance } = findNearestOpenAddress(
+      userAddress,
+      addresses,
+    );
+
+    if (nearestAddress) {
+      await this.cartModel.update(
+        { addressId: nearestAddress.dataValues.id },
+        { where: { user_id: userId } },
+      );
+
       ctx.reply(FOR_HOUSE_NUM[user.lang], {
         reply_markup: { remove_keyboard: true },
+      });
+    } else {
+      await this.cartModel.destroy({ where: { user_id: userId } });
+      await this.addressModel.destroy({ where: { user_id: userId } });
+
+      const keyboard = Markup.keyboard(
+        [
+          [MAIN_MENU[user.lang][0][0]], // Birinchi qator - bitta tugma
+          [MAIN_MENU[user.lang][1][0]], // Ikkinchi qator - bitta tugma
+          [MAIN_MENU[user.lang][2][0], MAIN_MENU[user.lang][3][0]], // Uchinchi qator - 2 ta tugma
+          [MAIN_MENU[user.lang][4][0], MAIN_MENU[user.lang][5][0]],
+        ], // To'rtinchi qator - bitta tugma
+      ).resize();
+
+      // Foydalanuvchiga menyuni yuborish
+      await ctx.reply(CLOSE_ALL_ADDRESSES[user.lang], {
+        parse_mode: 'HTML',
+        ...keyboard,
       });
     }
   }
@@ -931,6 +1035,23 @@ export class BotService {
   async onFaster(ctx: Context) {
     const userId = ctx.from.id;
     const user = await this.userModel.findByPk(userId);
+
+    const cart = await this.cartModel.findOne({ where: { user_id: userId } });
+
+    let total_price = 0;
+    cart.products.forEach((product) => {
+      total_price += Number(product[1]) * Number(product[2]);
+    });
+
+    await this.ordersModel.create({
+      user_id: userId,
+      total_price,
+      products: cart.products,
+      addressId: cart.addressId,
+      service_type:cart.service_type
+    });
+    await this.cartModel.destroy({ where: { user_id: userId } });
+
     ctx.reply(ORDER_DELIVER[user.lang]);
   }
 

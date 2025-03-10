@@ -4,6 +4,7 @@ interface IOurAddressessCreationAttr {
   city: string;
   landmark: string;
   location: string;
+  work_time: string;
 }
 
 @Table({ tableName: 'ouraddressess' })
@@ -32,4 +33,9 @@ export class OurAddressess extends Model<
     type: DataType.STRING,
   })
   location: string;
+
+  @Column({
+    type: DataType.STRING,
+  })
+  work_time: string;
 }

@@ -16,6 +16,7 @@ import { Message } from 'telegraf/typings/core/types/typegram';
 import { AdminService } from 'src/admin/admin.service';
 import { InjectModel } from '@nestjs/sequelize';
 import { Categories } from './models/category.model';
+import { Admin } from 'src/admin/models/admin.model';
 
 @Update()
 export class BotUpdate {
@@ -24,6 +25,7 @@ export class BotUpdate {
     private readonly adminService: AdminService,
     @InjectModel(Categories)
     private readonly categoriesModel: typeof Categories,
+    @InjectModel(Admin) private readonly adminModel: typeof Admin,
   ) {}
 
   @Start()
@@ -38,6 +40,10 @@ export class BotUpdate {
 
   @Hears([...new Set(Object.values(regions).flat())])
   async onRegion(@Ctx() ctx: Context) {
+    const admin = await this.adminModel.findByPk(ctx.from.id);
+    if (admin && admin.last_step !== 'finish') {
+      return this.adminService.addAddress(ctx);
+    }
     function detectLanguage(region: string): string | null {
       return (
         Object.keys(regions).find((lang) => regions[lang].includes(region)) ||
@@ -79,6 +85,10 @@ export class BotUpdate {
 
   @On('location')
   async onLocation(@Ctx() ctx: Context) {
+    const admin = await this.adminModel.findByPk(ctx.from.id);
+    if (admin && admin.last_step !== 'finish') {
+      return this.adminService.addAddress(ctx);
+    }
     await this.botService.onLocation(ctx);
   }
 
@@ -107,6 +117,21 @@ export class BotUpdate {
   async onBackAdmin(@Ctx() ctx: Context) {
     await this.botService.onStart(ctx);
   }
+
+  @Hears("Kategoriya qo'shish")
+  async onAddCategory(@Ctx() ctx: Context) {
+    await this.adminService.addCategory(ctx);
+  }
+
+  @Hears("Taom qo'shish")
+  async onAddProduct(@Ctx() ctx: Context) {
+    await this.adminService.addProduct(ctx);
+  }
+
+  @Hears("Manzil qo'shish")
+  async onAddAddress(@Ctx() ctx: Context) {
+    await this.adminService.addAddress(ctx);
+  }
   //--------------------------------------------//
   @Hears(['📥 Корзина', '📥 Savat', '📥 Cart'])
   async onCart(@Ctx() ctx: Context) {
@@ -133,6 +158,12 @@ export class BotUpdate {
 
   @Hears(new RegExp('^\\p{Extended_Pictographic}\\s?.+', 'u')) // Emoji + matn formatiga mos regex
   async onCategorySelected(ctx: Context) {
+    const admin = await this.adminModel.findByPk(ctx.from.id);
+    if (admin && admin.last_step.split('_')[1] === 'category') {
+      return this.adminService.addCategory(ctx);
+    } else if (admin && admin.last_step.split('_')[1] === 'product') {
+      return this.adminService.addProduct(ctx);
+    }
     if ('text' in ctx.message && typeof ctx.message.text === 'string') {
       const textMessage = ctx.message.text; // Matnni olish
 
@@ -195,15 +226,22 @@ export class BotUpdate {
     await this.botService.onCompleteCart(ctx);
   }
 
-  // @On('photo')
-  // async photo(ctx:Context){
-  //   if('photo' in ctx.message){
-  //     console.log(ctx.message.photo);
+  @On('photo')
+  async photo(ctx: Context) {
+    if ('photo' in ctx.message) {
+      const admin = await this.adminModel.findByPk(ctx.from.id);
+      if (admin && admin.last_step !== 'finish') {
+        return this.adminService.addProduct(ctx);
+      }
+    }
+  }
 
-  //   }
-  // }
   @On('text')
   async onText(@Ctx() ctx: Context) {
+    const admin = await this.adminModel.findByPk(ctx.from.id);
+    if (admin && admin.last_step !== 'finish') {
+      return this.adminService.addAddress(ctx);
+    }
     await this.botService.onText(ctx);
   }
 }

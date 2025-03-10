@@ -9,6 +9,7 @@ interface IAdminCreationAttr {
 export class Admin extends Model<Admin, IAdminCreationAttr> {
   @Column({
     type: DataType.BIGINT,
+    primaryKey: true,
   })
   admin_id: number;
 
